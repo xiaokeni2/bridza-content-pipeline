@@ -1,0 +1,56 @@
+name: opencode-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run OpenCode Review
+        uses: anomalyco/opencode/github@latest
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          # 备选：Anthropic（解开下行并把 model 换成 anthropic/claude-sonnet-5-5）
+          # ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: qwen/qwen-plus
+          use_github_token: true
+          prompt: |
+            你是 BRIDZA 内容管线的 HTML 质量审查员。审查本 PR 中所有 .html 变更，
+            按以下踩坑清单逐项检查（源自 rf.bridza.com 生产事故）：
+
+            【围栏类（历史上曾致 210 页损坏，必须阻塞级）】
+            1. 未闭合的 <script> 标签
+            2. 双重 </script> 结尾（嵌套脚本被提前截断）
+            3. 裸 JS：脚本代码未被 <script> 包裹而直接出现在 HTML 中
+            4. JSON-LD 结构化数据的括号/引号失配
+
+            【SEO 类】
+            5. hreflang 缺失或 en↔zh 互指断裂（多语言页面必须互相指向）
+            6. canonical 缺失或指向错误 URL
+            7. 新增页面未同步 sitemap.xml（站内约定 sitemap 必须随页更新）
+            8. title/description 缺失或长度异常
+
+            【内容类】
+            9. computer:// 等本地协议误入对外页面
+            10. 占位符残留（lorem、TODO、john@company.com、your@email.com 等）
+            11. 中文乱码或编码错误
+
+            输出要求：
+            - 按阻塞级（围栏类）/ 警告级（SEO 类）/ 提示级（内容类）分级
+            - 阻塞级问题给出精确文件名 + 行号 + 修复建议（给出修正后的代码片段）
+            - 无阻塞级问题时明确说"可以合并"
+            - 不要逐字复述 diff，只报告问题

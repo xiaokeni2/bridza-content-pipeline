@@ -1,0 +1,40 @@
+name: opencode-weekly-audit
+
+on:
+  schedule:
+    - cron: "0 2 * * 1" # 每周一 02:00 UTC（北京时间 10:00）
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run OpenCode Audit
+        uses: anomalyco/opencode/github@latest
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: qwen/qwen-plus
+          use_github_token: true
+          prompt: |
+            扫描仓库内全部 .html 文件，执行 BRIDZA 内容质量审计：
+
+            1. 围栏完整性：未闭合 script、双重 </script>、裸 JS、JSON-LD 括号失配
+            2. SEO 完整性：hreflang 互指、canonical、title/description
+            3. sitemap.xml 与实际 html 文件的一致性（列出差异清单）
+            4. 占位符与本地协议残留
+
+            输出要求：
+            - 生成审计报告写入本周报 Issue（标题含日期）
+            - 若发现阻塞级问题：单独为每个问题开 Issue，标注文件与修复建议
+            - 若一切正常：Issue 中明确写"本周无阻塞问题"
