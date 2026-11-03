@@ -1,0 +1,91 @@
+name: anatomy-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: '产物文件夹名（如 agv-qr-nav）'
+        required: true
+      concept:
+        description: '要机械化的概念（一句话）'
+        required: true
+      brief:
+        description: '机械隐喻与交互设计提示（可选）'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install headless chromium (screenshot audit)
+        run: |
+          npx -y playwright install --with-deps chromium
+          CHROME=$(find ~/.cache/ms-playwright -name chrome -type f -path '*chrome-linux*' | head -1)
+          sudo ln -sf "$CHROME" /usr/local/bin/chromium
+          chromium --version
+
+      - name: Clone Anatomy skill
+        run: git clone --depth 1 https://github.com/wheresryan22/anatomy ./anatomy
+
+      - name: Install OpenCode CLI
+        run: npm i -g opencode-ai@latest
+
+      - name: Prepare build prompt
+        env:
+          SLUG: ${{ inputs.slug }}
+          CONCEPT: ${{ inputs.concept }}
+          BRIEF: ${{ inputs.brief }}
+        run: |
+          cat > /tmp/build-prompt.txt <<EOF
+          你是 BRIDZA 内容管线的机械图解构建工程师，用 Anatomy 工具构建一张交互式等距机械图解。
+
+          【主题概念】$CONCEPT
+          【机械隐喻提示】${BRIEF:-自行设计最贴切的物理隐喻，要求"对象即解释"——机制画错机器就不动}
+          【产物名】$SLUG
+
+          【执行流程】
+          1. 先完整阅读 ./anatomy/SKILL.md 及其引用的参考文件，严格遵循 Anatomy 官方构建流程（概念→机械映射→build→audit→截图自检）
+          2. 设计概念到机械的映射（每个机械部件对应概念里的一个真实机制）
+          3. 仿真模型必须真实：所有读数来自同一个实时仿真的计算结果，禁止硬编码演出字幕
+          4. 构建单文件 HTML，跑 Anatomy 自检（audit 几何排序、lines check 零悬挂线端）
+          5. 用 headless chromium 截图自查：桌面 1280x720、手机 390x844，自己看图检查重叠/错位/文字截断，有问题就修，直到通过
+
+          【硬约束】
+          - 渲染文本（title、顶栏、aria-label、readout、面板、图例）必须全英文；JS 注释可中文
+          - 深色主题（--anatomy-page:#0b0b0b 变量系）
+          - readout 在手机宽度（390px）必须单行显示不折行
+          - 页面对外只出现 BRIDZA 品牌字样，不提任何第三方公司
+          - 单文件自包含（内联 CSS/JS），不依赖外部资源
+
+          【交付】
+          - 产物写入 anatomy-builds/$SLUG/$SLUG.html
+          - 截图存 anatomy-builds/$SLUG/shots/desktop.png 和 phone.png
+          - 写 anatomy-builds/$SLUG/BUILD.md：零件数、audit 结果、交互说明（怎么玩）、构建中遇到的问题
+          EOF
+          head -5 /tmp/build-prompt.txt
+
+      - name: Build with OpenCode
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: |
+          opencode run --model qwen/qwen-plus "$(cat /tmp/build-prompt.txt)"
+
+      - name: Commit output
+        env:
+          SLUG: ${{ inputs.slug }}
+        run: |
+          git config user.name "anatomy-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add "anatomy-builds/$SLUG/"
+          git commit -m "anatomy: build $SLUG (qwen-plus trial)" || echo "nothing to commit"
+          git push
