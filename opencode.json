@@ -10,7 +10,8 @@
       },
       "models": {
         "qwen-plus": { "name": "Qwen Plus（主力）" },
-        "qwen-turbo": { "name": "Qwen Turbo（轻量）" }
+        "qwen-turbo": { "name": "Qwen Turbo（轻量）" },
+        "qwen3-coder-plus": { "name": "Qwen3 Coder（图解构建）" }
       }
     }
   }

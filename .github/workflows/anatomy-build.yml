@@ -63,13 +63,21 @@ jobs:
           【硬约束】
           - 渲染文本（title、顶栏、aria-label、readout、面板、图例）必须全英文；JS 注释可中文
           - 深色主题（--anatomy-page:#0b0b0b 变量系）
-          - readout 在手机宽度（390px）必须单行显示不折行
+          - readout 在手机宽度（390px）必须单行显示不折行，图例说明文字不得溢出视口
           - 页面对外只出现 BRIDZA 品牌字样，不提任何第三方公司
-          - 单文件自包含（内联 CSS/JS），不依赖外部资源
+          - 单文件自包含（内联 CSS/JS），不依赖外部资源；CSS 注释绝不能出现在 <style> 标签之外
+          - HTML 里所有可见文本节点渲染后不得互相重叠，构建时必须先脑内排版再输出
+
+          【截图自检为硬性要求，禁止跳过】
+          - 必须实际运行 chromium --headless --screenshot 生成 PNG 文件
+          - 截图后运行 ls -la anatomy-builds/$SLUG/shots/，确认每个 PNG 大于 10KB
+          - 用文件查看能力真实查看截图内容，发现重叠/错位/溢出必须修复后重新截图
+          - 如果截图文件是 0 字节或缺失，说明自检没完成，禁止写"通过"的构建报告
+          - 谎报自检结果是本次任务最严重的失败模式，宁可报告失败也不得虚报
 
           【交付】
           - 产物写入 anatomy-builds/$SLUG/$SLUG.html
-          - 截图存 anatomy-builds/$SLUG/shots/desktop.png 和 phone.png
+          - 截图存 anatomy-builds/$SLUG/shots/desktop.png 和 phone.png（必须为真实渲染截图）
           - 写 anatomy-builds/$SLUG/BUILD.md：零件数、audit 结果、交互说明（怎么玩）、构建中遇到的问题
           EOF
           head -5 /tmp/build-prompt.txt
@@ -78,7 +86,27 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
-          opencode run --model qwen/qwen-plus "$(cat /tmp/build-prompt.txt)"
+          opencode run --model qwen/qwen3-coder-plus "$(cat /tmp/build-prompt.txt)"
+
+      - name: Hard artifact validation (anti-false-report)
+        env:
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -e
+          HTML="anatomy-builds/$SLUG/$SLUG.html"
+          test -f "$HTML" || { echo "FAIL: HTML missing"; exit 1; }
+          HSIZE=$(stat -c%s "$HTML")
+          echo "HTML size: $HSIZE"
+          test "$HSIZE" -gt 60000 || { echo "FAIL: HTML too small ($HSIZE B) — likely incomplete build"; exit 1; }
+          for shot in desktop phone; do
+            P="anatomy-builds/$SLUG/shots/$shot.png"
+            test -f "$P" || { echo "FAIL: $P missing"; exit 1; }
+            PSIZE=$(stat -c%s "$P")
+            echo "$P size: $PSIZE"
+            test "$PSIZE" -gt 10000 || { echo "FAIL: $P is $PSIZE B — screenshot not real"; exit 1; }
+          done
+          grep -q 'iso-plate\|iso-svg\|<svg' "$HTML" || { echo "FAIL: no isometric SVG markup found"; exit 1; }
+          echo "PASS: all artifact checks green"
 
       - name: Commit output
         env:
