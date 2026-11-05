@@ -53,6 +53,13 @@ jobs:
           【机械隐喻提示】${BRIEF:-自行设计最贴切的物理隐喻，要求"对象即解释"——机制画错机器就不动}
           【产物名】$SLUG
 
+          【构建前需求拷问（grill 前置，硬性）】
+          - 借鉴 mattpocock grilling 方法：动手前把"概念→机械映射"展开成一棵设计树，每个决策分叉自问自答
+          - 至少覆盖 8 个分叉：①隐喻选择为什么是它（备选对比）②每个机械部件对应概念里的哪个真实机制 ③部件间传动/依赖关系 ④readout 读数的数据源与仿真公式 ⑤交互入口设计 ⑥iso 层次深度取舍 ⑦手机端(390px)信息取舍 ⑧失败模式（哪个部件画错机器就不动）
+          - 事实类问题（Anatomy 语法/API）自己查 ./anatomy/ 文档解决，不猜；决策类问题写下推荐答案+一句理由
+          - 拷问结果写入 BUILD.md 开头「设计树」章节：每行格式"决策 → 答案 → 理由"，禁止遗留未审视的假设分叉
+          - 设计树未写完禁止开始 build；audit 失败时回看设计树修正映射而不是改数值硬凑
+
           【执行流程】
           1. 先完整阅读 ./anatomy/SKILL.md 及其引用的参考文件，严格遵循 Anatomy 官方构建流程（概念→机械映射→build→audit→截图自检）
           2. 设计概念到机械的映射（每个机械部件对应概念里的一个真实机制）
@@ -106,6 +113,8 @@ jobs:
             test "$PSIZE" -gt 10000 || { echo "FAIL: $P is $PSIZE B — screenshot not real"; exit 1; }
           done
           grep -q 'iso-plate\|iso-svg\|<svg' "$HTML" || { echo "FAIL: no isometric SVG markup found"; exit 1; }
+          test -f "anatomy-builds/$SLUG/BUILD.md" || { echo "FAIL: BUILD.md missing"; exit 1; }
+          grep -q '设计树' "anatomy-builds/$SLUG/BUILD.md" || { echo "FAIL: design-tree (grill) section missing in BUILD.md"; exit 1; }
           echo "PASS: all artifact checks green"
 
       - name: Commit output
